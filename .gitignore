@@ -1,0 +1,16 @@
+# Node modules
+node_modules/
+
+# React build/cache
+frontend/node_modules/
+frontend/.cache/
+frontend/build/
+
+# Python/Django
+*.pyc
+__pycache__/
+db.sqlite3
+.env
+
+# Logs
+*.log
