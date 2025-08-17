@@ -1,5 +1,5 @@
 import React from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Link, Outlet, useNavigate, useParams } from "react-router-dom";
 
 function TableDetails() {
   const { id } = useParams();
