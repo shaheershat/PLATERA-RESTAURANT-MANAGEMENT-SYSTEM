@@ -10,6 +10,10 @@ import Layout from "./components/Layout"
 import ManagerLayout from "./components/manager/ManagerLayout"; // Import the new manager layout
 import ManagerDashboard from "./components/manager/ManagerDashboard"; 
 import ProductsDashboard from "./components/manager/ProductsDashboard"; 
+import ManagerStaffs from "./components/manager/ManagerStaffs"; 
+import ManagerSettings from "./components/manager/ManagerSettings"; 
+import ManagerReports from "./components/manager/ManagerReports";
+import InventoryManagement from "./components/manager/InventoryManagement"; // Import Inventory Management if needed
 
 function App() {
   return (
@@ -30,6 +34,10 @@ function App() {
         <Route element={<ManagerLayout />}>
           <Route path="/manager-dashboard" element={<ManagerDashboard />} />
           <Route path="/manager-items" element={<ProductsDashboard />} />
+          <Route path="/manager-staffs" element={<ManagerStaffs />} />
+          <Route path="/manager-settings" element={<ManagerSettings />} />
+          <Route path="/manager-reports" element={<ManagerReports />} />
+          <Route path="/manager-inventory" element={<InventoryManagement />} />
         </Route>
       </Routes>
     </Router>

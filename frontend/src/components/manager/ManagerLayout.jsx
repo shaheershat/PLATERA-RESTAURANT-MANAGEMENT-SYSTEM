@@ -11,7 +11,7 @@ const Layout = () => {
       {/* This layout will always use the ManagerSidebar */}
       <ManagerSidebar /> 
       <div className="flex-1 flex flex-col">
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-4">
           <Outlet />
         </main>
       </div>
