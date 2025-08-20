@@ -1,3 +1,138 @@
-from django.shortcuts import render
+from rest_framework import status, permissions
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import login, logout
+from django.contrib.auth import get_user_model
+from .serializers import (
+    UserSerializer, 
+    StaffLoginSerializer,
+    ManagerLoginSerializer,
+    CustomTokenObtainPairSerializer,
+    UserRegistrationSerializer
+)
+from rest_framework_simplejwt.views import TokenObtainPairView
 
-# Create your views here.
+User = get_user_model()
+
+class ManagerLoginView(APIView):
+    authentication_classes = []  # Disable authentication for this view
+    permission_classes = []  # Disable permission checks for this view
+    
+    def post(self, request, *args, **kwargs):
+        print("\n=== ManagerLoginView: Received login request ===")
+        print(f"Request headers: {dict(request.headers)}")
+        print(f"Request data: {request.data}")
+        
+        serializer = ManagerLoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            print(f"\n=== Validation failed ===")
+            print(f"Errors: {serializer.errors}")
+            return Response(
+                {'error': 'Invalid credentials', 'details': str(serializer.errors)},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        try:
+            user = serializer.validated_data.get('user')
+            if not user:
+                print("\n=== No user in validated data ===")
+                return Response(
+                    {'error': 'Authentication failed - no user data'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+                
+            print(f"\n=== User authenticated ===")
+            print(f"Username: {user.username}")
+            print(f"User type: {user.user_type}")
+            print(f"Is active: {user.is_active}")
+            
+            # Generate tokens
+            refresh = RefreshToken.for_user(user)
+            access_token = str(refresh.access_token)
+            
+            print("\n=== Generated tokens ===")
+            print(f"Access token: {access_token[:50]}...")
+            print(f"Refresh token: {str(refresh)[:50]}...")
+            
+            # Prepare response data
+            response_data = {
+                'refresh': str(refresh),
+                'access': access_token,
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'user_type': user.user_type,
+                    'email': user.email
+                }
+            }
+            
+            print("\n=== Login successful ===")
+            return Response(response_data)
+            
+        except Exception as e:
+            print(f"\n=== Error in ManagerLoginView ===")
+            import traceback
+            print(f"Error: {str(e)}")
+            print("Traceback:")
+            print(traceback.format_exc())
+            
+            return Response(
+                {'error': 'An error occurred during login', 'details': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class StaffLoginView(APIView):
+    def post(self, request, *args, **kwargs):
+        serializer = StaffLoginSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'user': UserSerializer(user).data
+            })
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            refresh_token = request.data["refresh"]
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response(status=status.HTTP_205_RESET_CONTENT)
+        except Exception as e:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
+class UserProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data)
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+
+class RegisterView(APIView):
+    permission_classes = [permissions.AllowAny]
+    
+    def post(self, request, *args, **kwargs):
+        serializer = UserRegistrationSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            
+            # Generate tokens for the new user
+            refresh = RefreshToken.for_user(user)
+            
+            return Response({
+                'user': UserSerializer(user).data,
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }, status=status.HTTP_201_CREATED)
+            
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
