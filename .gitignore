@@ -10,7 +10,7 @@ frontend/build/
 *.pyc
 __pycache__/
 db.sqlite3
-.env
+# .env  # Commented out to allow .env file in backend
 
 # Logs
 *.log

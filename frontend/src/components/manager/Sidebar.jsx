@@ -1,5 +1,6 @@
 import React from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   LayoutDashboard,
   Utensils,
@@ -10,22 +11,36 @@ import {
 } from "lucide-react"; // Lucide icons
 
 const Sidebar = () => {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/admin/login');
+    } catch (error) {
+      console.error('Failed to log out', error);
+    }
+  };
+
   return (
     <div className="w-20 bg-white shadow-lg flex flex-col items-center py-6 space-y-8">
       {/* Top Logo as Image */}
       <div className="mb-4">
-        <img
-          src="/logo.png" // put your logo in public/logo.png
-          alt="Logo"
-          className="w-10 h-10 rounded-full object-cover"
-        />
+        <NavLink to="/manager-dashboard">
+          <img
+            src="/logo.png"
+            alt="Logo"
+            className="w-10 h-10 rounded-full object-cover"
+          />
+        </NavLink>
       </div>
 
       {/* Navigation Links */}
       <div className="space-y-6">
         {/* Dashboard */}
         <NavLink
-          to="/manager-dashboard"
+          to="/manager/dashboard"
           className={({ isActive }) =>
             `flex justify-center items-center w-20 h-12 transition-colors duration-200 ${
               isActive
@@ -33,13 +48,14 @@ const Sidebar = () => {
                 : "text-[#5C4033]  hover:bg-gray-100 font-bold"
             }`
           }
+          title="Dashboard"
         >
           <LayoutDashboard size={24} />
         </NavLink>
 
         {/* Items */}
         <NavLink
-          to="/manager-items"
+          to="/manager/items"
           className={({ isActive }) =>
             `flex justify-center items-center w-20 h-12 transition-colors duration-200 ${
               isActive
@@ -47,13 +63,14 @@ const Sidebar = () => {
                 : "text-[#5C4033]  hover:bg-gray-100 font-bold"
             }`
           }
+          title="Menu Items"
         >
           <Utensils size={24} />
         </NavLink>
 
         {/* Staffs */}
         <NavLink
-          to="/manager-staffs"
+          to="/manager/staff"
           className={({ isActive }) =>
             `flex justify-center items-center w-20 h-12 transition-colors duration-200 ${
               isActive
@@ -61,27 +78,14 @@ const Sidebar = () => {
                 : "text-[#5C4033]  hover:bg-gray-100 font-bold"
             }`
           }
+          title="Staff"
         >
           <Users size={24} />
         </NavLink>
 
-        {/* Settings */}
-        <NavLink
-          to="/manager-settings"
-          className={({ isActive }) =>
-            `flex justify-center items-center w-20 h-12 transition-colors duration-200 ${
-              isActive
-                ? "bg-[#5C4033] text-white font-bold"
-                : "text-[#5C4033]  hover:bg-gray-100 font-bold"
-            }`
-          }
-        >
-          <Settings size={24} />
-        </NavLink>
-
         {/* Reports */}
         <NavLink
-          to="/manager-reports"
+          to="/manager/reports"
           className={({ isActive }) =>
             `flex justify-center items-center w-20 h-12 transition-colors duration-200 ${
               isActive
@@ -89,13 +93,14 @@ const Sidebar = () => {
                 : "text-[#5C4033]  hover:bg-gray-100 font-bold"
             }`
           }
+          title="Reports"
         >
           <BarChart3 size={24} />
         </NavLink>
 
         {/* Inventory */}
         <NavLink
-          to="/manager-inventory"
+          to="/manager/inventory"
           className={({ isActive }) =>
             `flex justify-center items-center w-20 h-12 transition-colors duration-200 ${
               isActive
@@ -103,6 +108,7 @@ const Sidebar = () => {
                 : "text-[#5C4033] hover:bg-gray-100 font-bold"
             }`
           }
+          title="Inventory"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -132,12 +138,30 @@ const Sidebar = () => {
         </NavLink>
       </div>
 
-
       {/* Spacer to push logout to bottom */}
       <div className="flex-1"></div>
 
+      {/* Settings */}
+      <NavLink
+        to="/manager/settings"
+        className={({ isActive }) =>
+          `flex justify-center items-center w-20 h-12 transition-colors duration-200 ${
+            isActive
+              ? "bg-[#5C4033] text-white font-bold"
+              : "text-[#5C4033]  hover:bg-gray-100 font-bold"
+          }`
+        }
+        title="Settings"
+      >
+        <Settings size={24} />
+      </NavLink>
+
       {/* Logout */}
-      <button className="flex justify-center items-center w-12 h-12 text-[#5C4033] hover:bg-gray-100 font-bold transition-colors duration-200">
+      <button 
+        onClick={handleLogout}
+        className="flex justify-center items-center w-20 h-12 text-[#5C4033] hover:bg-gray-100 font-bold transition-colors duration-200"
+        title="Logout"
+      >
         <LogOut size={24} />
       </button>
     </div>
