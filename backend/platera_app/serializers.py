@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import (
-    User, Profile, StaffProfile, Category, MenuItem, Table, 
+    User, Profile, StaffProfile, Category, Product, Table, 
     Order, OrderItem, Payment, Reservation, InventoryItem, 
     InventoryTransaction, Recipe, RecipeIngredient, Notification
 )
@@ -169,25 +169,22 @@ class RecipeSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('created_at', 'updated_at')
 
-class MenuItemSerializer(serializers.ModelSerializer):
+class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     recipe = RecipeSerializer(read_only=True)
     image_url = serializers.SerializerMethodField()
     
-    class Meta:
-        model = MenuItem
-        fields = [
-            'id', 'name', 'description', 'price', 'category', 'category_name',
-            'image', 'image_url', 'is_available', 'is_vegetarian', 'is_gluten_free',
-            'is_spicy', 'calories', 'preparation_time', 'recipe', 'created_at', 'updated_at'
-        ]
-        read_only_fields = ('created_at', 'updated_at')
-    
     def get_image_url(self, obj):
-        if obj.image:
+        if obj.image and hasattr(obj.image, 'url'):
             return obj.image.url
         return None
-        read_only_fields = ('created_at', 'updated_at')
+    
+    class Meta:
+        model = Product
+        fields = ('id', 'name', 'description', 'price', 'category', 'category_name',
+                 'image', 'image_url', 'is_available', 'is_vegetarian', 'is_vegan',
+                 'is_gluten_free', 'is_spicy', 'calories', 'preparation_time', 'recipe')
+        read_only_fields = ('id', 'category_name', 'image_url', 'recipe')
 
 # Table Management
 class TableSerializer(serializers.ModelSerializer):
@@ -200,14 +197,14 @@ class TableSerializer(serializers.ModelSerializer):
 
 # Order Management
 class OrderItemSerializer(serializers.ModelSerializer):
-    item_name = serializers.CharField(source='menu_item.name', read_only=True)
-    item_price = serializers.DecimalField(source='menu_item.price', read_only=True, max_digits=10, decimal_places=2)
+    item_name = serializers.CharField(source='product.name', read_only=True)
+    item_price = serializers.DecimalField(source='product.price', read_only=True, max_digits=10, decimal_places=2)
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     
     class Meta:
         model = OrderItem
         fields = [
-            'id', 'order', 'menu_item', 'item_name', 'item_price', 'quantity',
+            'id', 'order', 'product', 'item_name', 'item_price', 'quantity',
             'unit_price', 'special_instructions', 'status', 'total_price',
             'created_at', 'updated_at'
         ]
@@ -219,11 +216,10 @@ class OrderItemSerializer(serializers.ModelSerializer):
         return value
     
     def create(self, validated_data):
-        # Set unit price from menu item if not provided
+        # Set unit price from product if not provided
         if 'unit_price' not in validated_data:
-            validated_data['unit_price'] = validated_data['menu_item'].price
+            validated_data['unit_price'] = validated_data['product'].price
         return super().create(validated_data)
-        read_only_fields = ('created_at', 'updated_at', 'unit_price', 'total_price')
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
@@ -289,7 +285,6 @@ class InventoryItemSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError("Quantity cannot be negative.")
         return value
-        read_only_fields = ('created_at', 'updated_at')
 
 # Notification System
 class NotificationSerializer(serializers.ModelSerializer):
@@ -313,11 +308,11 @@ class OrderListSerializer(serializers.ModelSerializer):
                  'status', 'status_display', 'grand_total', 'created_at')
         read_only_fields = ('created_at', 'updated_at')
 
-class MenuItemListSerializer(serializers.ModelSerializer):
+class ProductListSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     
     class Meta:
-        model = MenuItem
-        fields = ('id', 'name', 'category', 'category_name', 'price', 'is_available', 
+        model = Product
+        fields = ('id', 'name', 'price', 'category_name', 'is_available', 
                  'is_vegetarian', 'is_gluten_free', 'is_spicy', 'image')
         read_only_fields = ('created_at', 'updated_at')

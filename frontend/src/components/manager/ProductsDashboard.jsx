@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { menuApi } from '../../services/api';
+import { menuApi, cloudinaryApi } from '../../services/api';
 import { toast } from 'react-toastify';
+import { v4 as uuidv4 } from 'uuid';
 
 // Default image URL
 const DEFAULT_IMAGE = 'https://placehold.co/400x300/FDBA00/FFFFFF?text=No+Image';
@@ -103,37 +104,43 @@ const ProductsDashboard = () => {
     return matchesCategory && matchesSearch;
   }) : [];
 
-  // Handle image file selection with validation
-  const handleImageChange = (e, isEdit = false) => {
+  // Handle image file selection for new item
+  const handleImageChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
-      toast.error('Please upload a valid image file (JPEG, PNG, or WebP)');
+    
+    // Check file type
+    if (!file.type.match('image.*')) {
+      toast.error('Please select an image file (JPEG, PNG, etc.)');
       return;
     }
-
-    // Validate file size (max 5MB)
-    const maxSize = 5 * 1024 * 1024; // 5MB
-    if (file.size > maxSize) {
+    
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
       toast.error('Image size should be less than 5MB');
       return;
     }
-
-    if (isEdit) {
-      setEditImageFile(file);
-      setEditedItem(prev => ({
-        ...prev,
-        image: file
-      }));
-    } else {
-      setImageFile(file);
-      setNewItem(prev => ({
-        ...prev,
-        image: file
-      }));
+    
+    try {
+      setIsLoading(true);
+      
+      // Upload to Cloudinary
+      const response = await cloudinaryApi.uploadImage(file, 'menu-items');
+      
+      if (response.data) {
+        setNewItem(prev => ({
+          ...prev,
+          image: response.data.secure_url,
+          image_public_id: response.data.public_id
+        }));
+        setImageFile(file);
+        toast.success('Image uploaded successfully');
+      }
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('Failed to upload image. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -168,39 +175,94 @@ const ProductsDashboard = () => {
     setImageFile(null);
     setNewItem(prev => ({
       ...prev,
-      image: null
+      image: null,
+      image_public_id: null
     }));
   };
   
+  // Handle edit image change
+  const handleEditImageChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Check file type
+    if (!file.type.match('image.*')) {
+      toast.error('Please select an image file (JPEG, PNG, etc.)');
+      return;
+    }
+    
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size should be less than 5MB');
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      
+      // If there's an existing image, delete it first
+      if (editedItem.image_public_id) {
+        try {
+          await cloudinaryApi.deleteImage(editedItem.image_public_id);
+        } catch (deleteError) {
+          console.warn('Could not delete old image:', deleteError);
+          // Continue with upload even if delete fails
+        }
+      }
+      
+      // Upload new image to Cloudinary
+      const response = await cloudinaryApi.uploadImage(file, 'menu-items');
+      
+      if (response.data) {
+        setEditedItem(prev => ({
+          ...prev,
+          image: response.data.secure_url,
+          image_public_id: response.data.public_id
+        }));
+        setEditImageFile(file);
+        toast.success('Image updated successfully');
+      }
+    } catch (error) {
+      console.error('Error updating image:', error);
+      toast.error('Failed to update image. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Remove image from edited item
   const removeEditImage = () => {
     setEditImageFile(null);
     setEditedItem(prev => ({
       ...prev,
-      image: null
+      image: null,
+      image_public_id: null
     }));
   };
 
   // Handle add item submission
   const handleAddItem = async (e) => {
     e.preventDefault();
+    
+    // Basic validation
+    if (!newItem.name || !newItem.category || !newItem.price) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    
     try {
       setIsLoading(true);
       
-      // First create the menu item
-      const { image, ...itemData } = newItem;
-      const response = await menuApi.createMenuItem(itemData);
-      const createdItem = response.data;
-      
-      // If there's an image, upload it separately
-      if (image) {
-        try {
-          await menuApi.uploadMenuItemImage(createdItem.id, image);
-        } catch (uploadError) {
-          console.error('Error uploading image:', uploadError);
-          toast.warning('Menu item was created, but there was an error uploading the image');
-        }
-      }
+      // Create the menu item with the Cloudinary URL
+      const { image, image_public_id, ...itemData } = newItem;
+      const response = await menuApi.createMenuItem({
+        ...itemData,
+        // Only include image if it's a URL (already uploaded to Cloudinary)
+        ...(image && typeof image === 'string' ? { 
+          image,
+          image_public_id 
+        } : {})
+      });
       
       // Refresh all data to ensure consistency
       await fetchAllData();
@@ -212,10 +274,12 @@ const ProductsDashboard = () => {
         price: '',
         description: '',
         is_available: true,
-        image: null
+        image: null,
+        image_public_id: null
       });
       setImageFile(null);
       setIsAddItemOpen(false);
+      
       toast.success('Menu item added successfully');
     } catch (err) {
       console.error('Error adding menu item:', err);
@@ -235,7 +299,8 @@ const ProductsDashboard = () => {
       price: product.price,
       description: product.description || '',
       is_available: product.is_available,
-      image: null
+      image: product.image,
+      image_public_id: product.image_public_id
     });
     setEditImageFile(null);
     setIsEditItemOpen(true);
@@ -246,22 +311,25 @@ const ProductsDashboard = () => {
     e.preventDefault();
     if (!selectedProduct) return;
     
+    // Basic validation
+    if (!editedItem.name || !editedItem.category || !editedItem.price) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    
     try {
       setIsLoading(true);
       
-      // First update the menu item data
-      const { image, ...itemData } = editedItem;
-      await menuApi.updateMenuItem(selectedProduct.id, itemData);
-      
-      // If there's a new image, upload it separately
-      if (editImageFile) {
-        try {
-          await menuApi.uploadMenuItemImage(selectedProduct.id, editImageFile);
-        } catch (uploadError) {
-          console.error('Error uploading image:', uploadError);
-          toast.warning('Menu item was updated, but there was an error uploading the new image');
-        }
-      }
+      // Update the menu item with the Cloudinary URL
+      const { image, image_public_id, ...itemData } = editedItem;
+      await menuApi.updateMenuItem(selectedProduct.id, {
+        ...itemData,
+        // Only include image if it's a URL (already uploaded to Cloudinary)
+        ...(image && typeof image === 'string' ? { 
+          image,
+          image_public_id 
+        } : {})
+      });
       
       // Refresh all data to ensure consistency
       await fetchAllData();
@@ -275,7 +343,8 @@ const ProductsDashboard = () => {
         price: '', 
         description: '',
         is_available: true,
-        image: null 
+        image: null,
+        image_public_id: null
       });
       setEditImageFile(null);
       
@@ -295,6 +364,18 @@ const ProductsDashboard = () => {
     
     try {
       setIsLoading(true);
+      
+      // First, delete the image from Cloudinary if it exists
+      if (selectedProduct.image_public_id) {
+        try {
+          await cloudinaryApi.deleteImage(selectedProduct.image_public_id);
+        } catch (deleteError) {
+          console.warn('Could not delete image from Cloudinary:', deleteError);
+          // Continue with item deletion even if image deletion fails
+        }
+      }
+      
+      // Then delete the menu item
       await menuApi.deleteMenuItem(selectedProduct.id);
       
       // Refresh all data to ensure consistency
@@ -750,54 +831,49 @@ const ProductsDashboard = () => {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Image</label>
                       <div className="mt-1">
                         <div className="flex items-center">
-                          <span className="inline-block h-20 w-20 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
-                            {editImageFile ? (
-                              <img
-                                src={URL.createObjectURL(editImageFile)}
-                                alt="Preview"
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <img
-                                src={selectedProduct.image || DEFAULT_IMAGE}
-                                alt={selectedProduct.name}
-                                className="h-full w-full object-cover"
-                                onError={(e) => {
-                                  e.target.onerror = null;
-                                  e.target.src = DEFAULT_IMAGE;
-                                }}
-                              />
-                            )}
-                          </span>
-                          <div className="ml-4 flex flex-col space-y-2">
-                            <div>
-                              <label
-                                htmlFor="edit-file-upload"
-                                className="px-3 py-1.5 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#5C4033] cursor-pointer inline-flex items-center"
-                              >
-                                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                                </svg>
-                                <span>{editImageFile || selectedProduct?.image ? 'Change image' : 'Upload image'}</span>
-                                <input
-                                  id="edit-file-upload"
-                                  name="edit-file-upload"
-                                  type="file"
-                                  className="sr-only"
-                                  onChange={(e) => handleImageChange(e, true)}
-                                  accept="image/jpeg, image/png, image/webp"
-                                />
-                              </label>
+                          {editImageFile || editedItem.image ? (
+                            <img
+                              src={editImageFile ? URL.createObjectURL(editImageFile) : editedItem.image}
+                              alt="Preview"
+                              className="h-20 w-20 object-cover rounded-md"
+                              onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = DEFAULT_IMAGE;
+                              }}
+                            />
+                          ) : (
+                            <div className="h-20 w-20 bg-gray-200 rounded-md flex items-center justify-center text-gray-400">
+                              <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
                             </div>
-                            {(editImageFile || selectedProduct?.image) && (
+                          )}
+                          <div className="ml-4">
+                            <label
+                              htmlFor="edit-file-upload"
+                              className="cursor-pointer bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm leading-4 font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 inline-flex items-center"
+                            >
+                              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                              </svg>
+                              <span>{editImageFile || editedItem.image ? 'Change' : 'Upload'} image</span>
+                              <input
+                                id="edit-file-upload"
+                                name="edit-file-upload"
+                                type="file"
+                                className="sr-only"
+                                onChange={handleEditImageChange}
+                                accept="image/jpeg, image/png, image/webp"
+                                disabled={isLoading}
+                              />
+                            </label>
+                            {(editImageFile || editedItem.image) && (
                               <button
                                 type="button"
                                 onClick={removeEditImage}
-                                className="px-3 py-1.5 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 inline-flex items-center"
+                                className="ml-3 text-sm text-red-600 hover:text-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={isLoading}
                               >
-                                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
                                 Remove
                               </button>
                             )}

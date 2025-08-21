@@ -132,9 +132,9 @@ USE_TZ = True
 
 # Cloudinary Storage
 CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
-    'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
-    'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
+    'CLOUD_NAME': 'dzpksiomk',
+    'API_KEY': '632675563128142',
+    'API_SECRET': 'UEND0Y8VjyLI9uNA9CWAC4DkcZM',
     'SECURE': True
 }
 

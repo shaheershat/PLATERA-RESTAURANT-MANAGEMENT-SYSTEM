@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
 from .models import (
-    User, Profile, StaffProfile, Category, MenuItem, Table, 
+    User, Profile, StaffProfile, Category, Product, Table, 
     Order, OrderItem, Payment, Reservation, InventoryItem, 
     InventoryTransaction, Recipe, RecipeIngredient, Notification
 )
@@ -57,15 +57,15 @@ class CategoryAdmin(admin.ModelAdmin):
     search_fields = ('name', 'description')
     prepopulated_fields = {}
 
-# Menu Item Admin
+# Product Admin
 class RecipeInline(admin.StackedInline):
     model = Recipe
     can_delete = False
     extra = 0
     fields = ('preparation_time', 'cooking_time', 'servings', 'instructions')
 
-@admin.register(MenuItem)
-class MenuItemAdmin(admin.ModelAdmin):
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
     list_display = ('name', 'category', 'price', 'is_available', 'is_vegetarian', 'is_gluten_free', 'is_spicy')
     list_filter = ('is_available', 'is_vegetarian', 'is_gluten_free', 'is_spicy', 'category')
     search_fields = ('name', 'description')
@@ -122,11 +122,24 @@ class InventoryTransactionInline(admin.TabularInline):
 
 @admin.register(InventoryItem)
 class InventoryItemAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'quantity', 'unit', 'unit_price', 'is_active')
+    list_display = ('name', 'category', 'current_stock', 'unit_display', 'average_cost', 'is_active')
     list_filter = ('category', 'is_active')
-    search_fields = ('name', 'description', 'supplier')
+    search_fields = ('name', 'description', 'supplier__name')
     inlines = [InventoryTransactionInline]
     list_editable = ('is_active',)
+    
+    def current_stock(self, obj):
+        return obj.quantity
+    current_stock.short_description = 'Current Stock'
+    
+    def unit_display(self, obj):
+        return obj.unit.abbreviation if obj.unit else ''
+    unit_display.short_description = 'Unit'
+    
+    def average_cost(self, obj):
+        return f"${obj.average_cost:.2f}" if obj.average_cost else 'N/A'
+    average_cost.short_description = 'Avg Cost'
+    
     actions = ['mark_as_active', 'mark_as_inactive']
 
     def mark_as_active(self, request, queryset):
@@ -147,8 +160,8 @@ class RecipeIngredientInline(admin.TabularInline):
 
 @admin.register(Recipe)
 class RecipeAdmin(admin.ModelAdmin):
-    list_display = ('menu_item', 'preparation_time', 'cooking_time', 'servings')
-    search_fields = ('menu_item__name', 'description')
+    list_display = ('product', 'preparation_time', 'cooking_time', 'servings')
+    search_fields = ('product__name', 'description')
     inlines = [RecipeIngredientInline]
 
 # Notification Admin
@@ -185,16 +198,37 @@ class StaffProfileAdmin(admin.ModelAdmin):
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
-    list_display = ('menu_item', 'order', 'quantity', 'unit_price', 'total_price', 'status')
+    list_display = ('product_name', 'order', 'quantity', 'unit_price', 'total_price', 'status')
     list_filter = ('status',)
-    search_fields = ('menu_item__name', 'order__order_id')
+    search_fields = ('product__name', 'order__order_id')
+    
+    def product_name(self, obj):
+        return obj.product.name if obj.product else 'N/A'
+    product_name.short_description = 'Product'
 
 @admin.register(InventoryTransaction)
 class InventoryTransactionAdmin(admin.ModelAdmin):
-    list_display = ('item', 'transaction_type', 'quantity', 'unit', 'created_at')
+    list_display = ('inventory_item_name', 'transaction_type', 'quantity_with_unit', 'total_cost', 'get_reference', 'created_at')
     list_filter = ('transaction_type', 'created_at')
-    search_fields = ('item__name', 'reference', 'notes')
+    search_fields = ('inventory_item__name', 'reference', 'notes')
     date_hierarchy = 'created_at'
+    
+    def get_reference(self, obj):
+        return obj.reference or 'N/A'
+    get_reference.short_description = 'Reference'
+    
+    def inventory_item_name(self, obj):
+        return obj.inventory_item.name if obj.inventory_item else 'N/A'
+    inventory_item_name.short_description = 'Item'
+    
+    def quantity_with_unit(self, obj):
+        unit = obj.unit.abbreviation if obj.unit else ''
+        return f"{obj.quantity} {unit}"
+    quantity_with_unit.short_description = 'Quantity'
+    
+    def total_cost(self, obj):
+        return f"${obj.total_amount:.2f}" if obj.total_amount else 'N/A'
+    total_cost.short_description = 'Total Cost'
 
 @admin.register(RecipeIngredient)
 class RecipeIngredientAdmin(admin.ModelAdmin):

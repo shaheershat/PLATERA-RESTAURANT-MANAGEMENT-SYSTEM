@@ -13,7 +13,7 @@ router.register(r'staff', api_views.StaffProfileViewSet)
 
 # Menu Management
 router.register(r'categories', api_views.CategoryViewSet)
-router.register(r'menu-items', api_views.MenuItemViewSet)
+router.register(r'products', api_views.ProductViewSet)
 
 # Table Management
 router.register(r'tables', api_views.TableViewSet)
@@ -54,9 +54,9 @@ urlpatterns = [
     path('categories/<int:pk>/upload-image/', 
          api_views.CategoryViewSet.as_view({'post': 'upload_image'}), 
          name='category-upload-image'),
-    path('menu-items/<int:pk>/upload-image/', 
-         api_views.MenuItemViewSet.as_view({'post': 'upload_image'}), 
-         name='menu-item-upload-image'),
+    path('products/<int:pk>/upload-image/', 
+         api_views.ProductViewSet.as_view({'post': 'upload_image'}), 
+         name='product-upload-image'),
          
     # Inventory management endpoints
     path('inventory/low-stock/', 

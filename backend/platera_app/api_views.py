@@ -14,16 +14,16 @@ from .serializers import (
 from .views import RegisterView, StaffLoginView, ManagerLoginView
 
 from .models import (
-    User, Profile, StaffProfile, Category, MenuItem, Table, 
+    User, Profile, StaffProfile, Category, Product, Table, 
     Order, OrderItem, Payment, Reservation, InventoryItem,
     InventoryTransaction, Recipe, RecipeIngredient, Notification
 )
 from .serializers import (
     UserSerializer, ProfileSerializer, StaffProfileSerializer, CategorySerializer,
-    MenuItemSerializer, TableSerializer, OrderSerializer, OrderItemSerializer,
+    ProductSerializer, TableSerializer, OrderSerializer, OrderItemSerializer,
     PaymentSerializer, ReservationSerializer, InventoryItemSerializer,
     InventoryTransactionSerializer, RecipeSerializer, RecipeIngredientSerializer,
-    NotificationSerializer, MenuItemListSerializer, OrderListSerializer
+    NotificationSerializer, ProductListSerializer, OrderListSerializer
 )
 
 # User Management
@@ -87,9 +87,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(category)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-class MenuItemViewSet(viewsets.ModelViewSet):
-    queryset = MenuItem.objects.all().select_related('category')
-    serializer_class = MenuItemSerializer
+class ProductViewSet(viewsets.ModelViewSet):
+    queryset = Product.objects.all().select_related('category')
+    serializer_class = ProductSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [filters.SearchFilter, DjangoFilterBackend]
     search_fields = ['name', 'description']
@@ -97,8 +97,8 @@ class MenuItemViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action == 'list':
-            return MenuItemListSerializer
-        return MenuItemSerializer
+            return ProductListSerializer
+        return ProductSerializer
 
     def get_queryset(self):
         queryset = super().get_queryset()

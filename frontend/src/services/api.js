@@ -278,6 +278,27 @@ export const authApi = {
   getCurrentUser: () => api.get('/auth/me/'),
 };
 
+// Cloudinary API
+export const cloudinaryApi = {
+  // Upload image to Cloudinary
+  uploadImage: (file, folder = 'platera') => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', folder);
+    
+    return api.post('/cloudinary/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  
+  // Delete image from Cloudinary
+  deleteImage: (publicId) => {
+    return api.delete('/cloudinary/delete', { data: { publicId } });
+  },
+};
+
 // Menu API
 export const menuApi = {
   // Menu Items
@@ -303,15 +324,21 @@ export const menuApi = {
   toggleMenuItemAvailability: (id, isAvailable) => 
     api.patch(`/menu-items/${id}/`, { is_available: isAvailable }),
   
-  // Menu Item Images
-  uploadMenuItemImage: (id, imageFile) => {
-    const formData = new FormData();
-    formData.append('image', imageFile);
-    return api.post(`/menu-items/${id}/upload-image/`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+  // Menu Item Images with Cloudinary
+  uploadMenuItemImage: async (id, imageFile) => {
+    try {
+      // First upload to Cloudinary
+      const uploadResponse = await cloudinaryApi.uploadImage(imageFile, 'menu-items');
+      
+      // Then save the Cloudinary URL to our database
+      return api.patch(`/menu/items/${id}/`, {
+        image: uploadResponse.data.secure_url,
+        image_public_id: uploadResponse.data.public_id
+      });
+    } catch (error) {
+      console.error('Error uploading menu item image:', error);
+      throw error;
+    }
   },
 
   // Categories
@@ -335,15 +362,21 @@ export const menuApi = {
   },
   deleteCategory: (id) => api.delete(`/categories/${id}/`),
   
-  // Category Images
-  uploadCategoryImage: (id, imageFile) => {
-    const formData = new FormData();
-    formData.append('image', imageFile);
-    return api.post(`/categories/${id}/upload-image/`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+  // Category Images with Cloudinary
+  uploadCategoryImage: async (id, imageFile) => {
+    try {
+      // First upload to Cloudinary
+      const uploadResponse = await cloudinaryApi.uploadImage(imageFile, 'categories');
+      
+      // Then save the Cloudinary URL to our database
+      return api.patch(`/menu/categories/${id}/`, {
+        image: uploadResponse.data.secure_url,
+        image_public_id: uploadResponse.data.public_id
+      });
+    } catch (error) {
+      console.error('Error uploading category image:', error);
+      throw error;
+    }
   },
 };
 
