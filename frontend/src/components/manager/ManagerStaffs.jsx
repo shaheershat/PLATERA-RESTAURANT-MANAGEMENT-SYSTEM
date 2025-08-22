@@ -1,65 +1,112 @@
-import React, { useState } from 'react';
-
-// Mock data for the staff list
-const staffData = [
-  {
-    id: 1,
-    name: 'John Doe',
-    role: 'Chef',
-    status: 'Active',
-    salary: 5000.0,
-    email: 'john.doe@example.com',
-  },
-  {
-    id: 2,
-    name: 'Jane Smith',
-    role: 'Waiter',
-    status: 'Active',
-    salary: 3000.0,
-    email: 'jane.smith@example.com',
-  },
-  {
-    id: 3,
-    name: 'Mike Johnson',
-    role: 'Manager',
-    status: 'Active',
-    salary: 7000.0,
-    email: 'mike.johnson@example.com',
-  },
-  {
-    id: 4,
-    name: 'Sarah Lee',
-    role: 'Bartender',
-    status: 'Inactive',
-    salary: 3500.0,
-    email: 'sarah.lee@example.com',
-  },
-];
+import React, { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
+import { useStaffData } from '../../hooks/useStaffData';
 
 const ManagerStaffs = () => {
-  const [activeRole, setActiveRole] = useState('All');
+  // Use the useStaffData hook to manage staff data
+  const {
+    staff,
+    loading,
+    error,
+    activeRole,
+    setActiveRole,
+    filteredStaff,
+    fetchStaff,
+    addStaff,
+    updateStaff,
+    deleteStaff
+  } = useStaffData();
+  
+  // Local state for UI controls and form data
   const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
   const [isEditStaffOpen, setIsEditStaffOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [newStaff, setNewStaff] = useState({
-    name: '',
-    role: 'Chef',
-    salary: '',
+    first_name: '',
+    last_name: '',
     email: '',
-  });
-  const [editedStaff, setEditedStaff] = useState({
-    name: '',
-    role: '',
+    role: 'WAITER',
+    position: 'Waiter',
     salary: '',
-    email: '',
+    phone_number: '',
+    address: '',
+    hire_date: new Date().toISOString().split('T')[0],
+    is_active: true
   });
 
-  // Function to filter staff based on the active role
-  const filteredStaff =
-    activeRole === 'All'
-      ? staffData
-      : staffData.filter((staff) => staff.role === activeRole);
+  // Fetch staff data
+  useEffect(() => {
+    const fetchStaff = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        console.log('Fetching staff data...');
+        
+        // Log the API call details
+        console.log('Calling staffApi.getStaffMembers()');
+        const response = await staffApi.getStaffMembers();
+        console.log('Staff API Response:', response);
+        
+        // Log the response structure
+        console.log('Response data type:', typeof response?.data);
+        console.log('Response data keys:', response?.data ? Object.keys(response.data) : 'No data');
+        
+        // Handle different response formats
+        let staffData = [];
+        if (Array.isArray(response?.data)) {
+          staffData = response.data;
+        } else if (response?.data?.results) {
+          // Handle paginated response
+          staffData = response.data.results;
+        } else if (response?.data) {
+          // If data exists but isn't an array, wrap it in an array
+          staffData = [response.data];
+        }
+        
+        console.log('Processed staff data:', staffData);
+        // Save to localStorage for persistence
+        localStorage.setItem('staffData', JSON.stringify(staffData || []));
+        setStaff(staffData || []);
+      } catch (err) {
+        console.error('Error fetching staff:', err);
+        const errorMessage = err.response?.data?.detail || err.response?.data?.error || err.message || 'Failed to load staff data';
+        setError(errorMessage);
+        toast.error(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStaff();
+  }, []);
+  const [editedStaff, setEditedStaff] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    role: 'WAITER',
+    position: '',
+    salary: '',
+    phone_number: '',
+    address: '',
+    hire_date: new Date().toISOString().split('T')[0],
+    is_active: true
+  });
+
+  // Ensure we always have an array for rendering, even if something went wrong
+  const displayStaff = Array.isArray(filteredStaff) ? filteredStaff : [];
+  
+  // Debug logs
+  useEffect(() => {
+    console.log('Rendering with staff data:', {
+      staff,
+      filteredStaff,
+      displayStaff,
+      activeRole,
+      isStaffArray: Array.isArray(staff),
+      isFilteredStaffArray: Array.isArray(filteredStaff)
+    });
+  }, [staff, filteredStaff, activeRole]);
 
   // Handle form input changes for new staff
   const handleInputChange = (e) => {
@@ -69,55 +116,84 @@ const ManagerStaffs = () => {
 
   // Handle form input changes for edited staff
   const handleEditInputChange = (e) => {
-    const { name, value } = e.target;
-    setEditedStaff((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setSelectedStaff({
+      ...selectedStaff,
+      [name]: type === 'checkbox' ? checked : value,
+    });
   };
 
   // Handle add staff submission
-  const handleAddStaff = (e) => {
+  const handleAddStaff = async (e) => {
     e.preventDefault();
-    const newStaffMember = {
-      id: staffData.length + 1,
-      name: newStaff.name,
-      role: newStaff.role,
-      status: 'Active',
-      salary: parseFloat(newStaff.salary),
-      email: newStaff.email,
-    };
-    staffData.push(newStaffMember);
-    setIsAddStaffOpen(false);
-    setNewStaff({ name: '', role: 'Chef', salary: '', email: '' });
+    try {
+      setLoading(true);
+      const response = await staffApi.createStaffMember(newStaff);
+      setStaff([...staff, response.data]);
+      setIsAddStaffOpen(false);
+      setNewStaff({
+        first_name: '',
+        last_name: '',
+        email: '',
+        role: 'WAITER',
+        position: 'Waiter',
+        salary: '',
+        phone_number: '',
+        address: '',
+        hire_date: new Date().toISOString().split('T')[0],
+        is_active: true
+      });
+      toast.success('Staff member added successfully');
+    } catch (err) {
+      console.error('Error adding staff:', err);
+      toast.error(err.response?.data?.error || 'Failed to add staff member');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle edit staff submission
-  const handleSaveEdit = (e) => {
+  const handleEditStaff = async (e) => {
     e.preventDefault();
-    if (selectedStaff) {
-      const index = staffData.findIndex((s) => s.id === selectedStaff.id);
-      if (index !== -1) {
-        staffData[index] = {
-          ...staffData[index],
-          name: editedStaff.name,
-          role: editedStaff.role,
-          salary: parseFloat(editedStaff.salary),
-          email: editedStaff.email,
-        };
-        setIsEditStaffOpen(false);
-        setSelectedStaff(null);
-        setEditedStaff({ name: '', role: '', salary: '', email: '' });
-      }
+    if (!selectedStaff) return;
+    
+    try {
+      setLoading(true);
+      const { id, ...updateData } = selectedStaff;
+      const response = await staffApi.updateStaffMember(id, updateData);
+      
+      setStaff(staff.map(staff => 
+        staff.id === selectedStaff.id ? response.data : staff
+      ));
+      
+      setIsEditStaffOpen(false);
+      setSelectedStaff(null);
+      toast.success('Staff member updated successfully');
+    } catch (err) {
+      console.error('Error updating staff:', err);
+      toast.error(err.response?.data?.error || 'Failed to update staff member');
+    } finally {
+      setLoading(false);
     }
   };
 
   // Handle delete confirmation
-  const handleDeleteConfirm = () => {
-    if (selectedStaff) {
-      const index = staffData.findIndex((s) => s.id === selectedStaff.id);
-      if (index !== -1) {
-        staffData.splice(index, 1);
-        setIsDeleteConfirmOpen(false);
-        setSelectedStaff(null);
-      }
+  const handleDeleteStaff = async () => {
+    if (!selectedStaff) return;
+    
+    try {
+      setLoading(true);
+      await staffApi.deleteStaffMember(selectedStaff.id);
+      
+      setStaff(staff.filter(staff => staff.id !== selectedStaff.id));
+      setIsDeleteConfirmOpen(false);
+      setSelectedStaff(null);
+      toast.success('Staff member deleted successfully');
+    } catch (err) {
+      console.error('Error deleting staff:', err);
+      toast.error(err.response?.data?.error || 'Failed to delete staff member');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -186,29 +262,55 @@ const ManagerStaffs = () => {
             <div className="text-center">Action</div>
           </div>
 
+          {/* Loading state */}
+          {loading && (
+            <div className="p-4 text-center text-gray-500">
+              Loading staff data...
+            </div>
+          )}
+          
+          {/* Error state */}
+          {error && !loading && (
+            <div className="p-4 text-center text-red-500">
+              Error: {error}
+              <button 
+                onClick={fetchStaff}
+                className="ml-2 px-3 py-1 bg-gray-100 rounded hover:bg-gray-200"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          
+          {/* Empty state */}
+          {!loading && !error && displayStaff.length === 0 && (
+            <div className="p-4 text-center text-gray-500">
+              No staff members found
+            </div>
+          )}
+          
           {/* Staff rows */}
-          {filteredStaff.map((staff) => (
+          {!loading && !error && displayStaff.length > 0 && displayStaff.map((staffMember) => (
             <div
-              key={staff.id}
+              key={staffMember.id}
               className="grid grid-cols-6 gap-4 items-center p-4 border-b border-gray-200 last:border-b-0"
             >
               <div className="col-span-2 flex items-center space-x-4">
-                <span className="font-medium text-gray-800">{staff.name}</span>
+                <span className="font-medium text-gray-800">{`${staffMember.first_name || ''} ${staffMember.last_name || ''}`.trim()}</span>
               </div>
-              <div className="text-gray-600">{staff.role}</div>
+              <div className="text-gray-600">{staffMember.role}</div>
               <div>
-                <span className={staff.status === 'Active' ? 'text-green-500' : 'text-red-500'} font-medium>
-                  {staff.status}
+                <span className={staffMember.is_active ? 'text-green-500' : 'text-red-500'} font-medium>
+                  {staffMember.is_active ? 'Active' : 'Inactive'}
                 </span>
               </div>
               <div className="text-gray-800 font-medium">
-                ${staff.salary.toFixed(2)}
+                ${parseFloat(staffMember.salary || 0).toFixed(2)}
               </div>
               <div className="flex justify-center space-x-2">
                 <button
                   onClick={() => {
-                    setSelectedStaff(staff);
-                    setEditedStaff({ ...staff });
+                    setSelectedStaff(staffMember);
                     setIsEditStaffOpen(true);
                   }}
                   className="text-green-500 hover:text-green-700 transition-colors"
@@ -217,7 +319,7 @@ const ManagerStaffs = () => {
                 </button>
                 <button
                   onClick={() => {
-                    setSelectedStaff(staff);
+                    setSelectedStaff(staffMember);
                     setIsDeleteConfirmOpen(true);
                   }}
                   className="text-red-500 hover:text-red-700 transition-colors"
@@ -235,13 +337,46 @@ const ManagerStaffs = () => {
             <div className="bg-white p-6 rounded-lg shadow-lg w-96">
               <h2 className="text-xl font-semibold mb-4 text-[#5C4033]">Add Staff</h2>
               <form onSubmit={handleAddStaff} className="space-y-4">
-                <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Name</label>
+                    <label className="block text-sm font-medium text-gray-700">First Name</label>
                     <input
                       type="text"
-                      name="name"
-                      value={newStaff.name}
+                      name="first_name"
+                      value={newStaff.first_name}
+                      onChange={handleInputChange}
+                      className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Last Name</label>
+                    <input
+                      type="text"
+                      name="last_name"
+                      value={newStaff.last_name}
+                      onChange={handleInputChange}
+                      className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={newStaff.email}
+                      onChange={handleInputChange}
+                      className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Phone Number</label>
+                    <input
+                      type="tel"
+                      name="phone_number"
+                      value={newStaff.phone_number}
                       onChange={handleInputChange}
                       className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
                     />
@@ -253,12 +388,26 @@ const ManagerStaffs = () => {
                       value={newStaff.role}
                       onChange={handleInputChange}
                       className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
                     >
-                      <option value="Chef">Chef</option>
-                      <option value="Waiter">Waiter</option>
-                      <option value="Manager">Manager</option>
-                      <option value="Bartender">Bartender</option>
+                      <option value="WAITER">Waiter</option>
+                      <option value="CHEF">Chef</option>
+                      <option value="MANAGER">Manager</option>
+                      <option value="BARTENDER">Bartender</option>
+                      <option value="HOST">Host/Hostess</option>
+                      <option value="CASHIER">Cashier</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Position</label>
+                    <input
+                      type="text"
+                      name="position"
+                      value={newStaff.position}
+                      onChange={handleInputChange}
+                      className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Salary</label>
@@ -269,15 +418,28 @@ const ManagerStaffs = () => {
                       onChange={handleInputChange}
                       className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
                       step="0.01"
+                      min="0"
+                      required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                    <label className="block text-sm font-medium text-gray-700">Hire Date</label>
                     <input
-                      type="email"
-                      name="email"
-                      value={newStaff.email}
+                      type="date"
+                      name="hire_date"
+                      value={newStaff.hire_date}
                       onChange={handleInputChange}
+                      className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700">Address</label>
+                    <textarea
+                      name="address"
+                      value={newStaff.address}
+                      onChange={handleInputChange}
+                      rows="2"
                       className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
                     />
                   </div>
@@ -307,14 +469,47 @@ const ManagerStaffs = () => {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white p-6 rounded-lg shadow-lg w-96">
               <h2 className="text-xl font-semibold mb-4 text-[#5C4033]">Edit Staff</h2>
-              <form onSubmit={handleSaveEdit} className="space-y-4">
-                <div className="space-y-4">
+              <form onSubmit={handleEditStaff} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Name</label>
+                    <label className="block text-sm font-medium text-gray-700">First Name</label>
                     <input
                       type="text"
-                      name="name"
-                      value={editedStaff.name}
+                      name="first_name"
+                      value={selectedStaff.first_name || ''}
+                      onChange={handleEditInputChange}
+                      className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Last Name</label>
+                    <input
+                      type="text"
+                      name="last_name"
+                      value={selectedStaff.last_name || ''}
+                      onChange={handleEditInputChange}
+                      className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={selectedStaff.email || ''}
+                      onChange={handleEditInputChange}
+                      className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Phone Number</label>
+                    <input
+                      type="tel"
+                      name="phone_number"
+                      value={selectedStaff.phone_number || ''}
                       onChange={handleEditInputChange}
                       className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
                     />
@@ -323,36 +518,80 @@ const ManagerStaffs = () => {
                     <label className="block text-sm font-medium text-gray-700">Role</label>
                     <select
                       name="role"
-                      value={editedStaff.role}
+                      value={selectedStaff.role || 'WAITER'}
                       onChange={handleEditInputChange}
                       className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
                     >
-                      <option value="Chef">Chef</option>
-                      <option value="Waiter">Waiter</option>
-                      <option value="Manager">Manager</option>
-                      <option value="Bartender">Bartender</option>
+                      <option value="WAITER">Waiter</option>
+                      <option value="CHEF">Chef</option>
+                      <option value="MANAGER">Manager</option>
+                      <option value="BARTENDER">Bartender</option>
+                      <option value="HOST">Host/Hostess</option>
+                      <option value="CASHIER">Cashier</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Position</label>
+                    <input
+                      type="text"
+                      name="position"
+                      value={selectedStaff.position || ''}
+                      onChange={handleEditInputChange}
+                      className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Salary</label>
                     <input
                       type="number"
                       name="salary"
-                      value={editedStaff.salary}
+                      value={selectedStaff.salary || ''}
                       onChange={handleEditInputChange}
                       className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
                       step="0.01"
+                      min="0"
+                      required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                    <label className="block text-sm font-medium text-gray-700">Hire Date</label>
                     <input
-                      type="email"
-                      name="email"
-                      value={editedStaff.email}
+                      type="date"
+                      name="hire_date"
+                      value={selectedStaff.hire_date || new Date().toISOString().split('T')[0]}
                       onChange={handleEditInputChange}
                       className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                      required
                     />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700">Address</label>
+                    <textarea
+                      name="address"
+                      value={selectedStaff.address || ''}
+                      onChange={handleEditInputChange}
+                      rows="2"
+                      className="mt-1 block w-full border-2 border-[#5C4033] rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-[#5C4033]"
+                    />
+                  </div>
+                  <div>
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        name="is_active"
+                        checked={selectedStaff.is_active || false}
+                        onChange={(e) =>
+                          setSelectedStaff({
+                            ...selectedStaff,
+                            is_active: e.target.checked,
+                          })
+                        }
+                        className="rounded border-[#5C4033] text-[#5C4033] focus:ring-[#5C4033]"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Active</span>
+                    </label>
                   </div>
                 </div>
                 <div className="flex justify-end space-x-4 mt-6">

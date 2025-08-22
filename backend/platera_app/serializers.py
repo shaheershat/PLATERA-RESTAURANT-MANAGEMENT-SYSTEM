@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.utils import timezone
 from .models import (
     User, Profile, StaffProfile, Category, Product, Table, 
     Order, OrderItem, Payment, Reservation, InventoryItem, 
@@ -45,10 +46,14 @@ class StaffProfileSerializer(serializers.ModelSerializer):
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
     password2 = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
+    position = serializers.CharField(write_only=True, required=False, default='Waiter')
+    salary = serializers.DecimalField(write_only=True, max_digits=10, decimal_places=2, required=False, default=0)
+    hire_date = serializers.DateField(write_only=True, required=False)
     
     class Meta:
         model = User
-        fields = ('username', 'email', 'password', 'password2', 'first_name', 'last_name', 'phone_number', 'address')
+        fields = ('username', 'email', 'password', 'password2', 'first_name', 'last_name', 
+                 'phone_number', 'address', 'position', 'salary', 'hire_date')
         extra_kwargs = {
             'first_name': {'required': True},
             'last_name': {'required': True},
@@ -61,20 +66,72 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return attrs
     
     def create(self, validated_data):
-        # Remove password2 from the data
-        validated_data.pop('password2', None)
+        # Remove extra fields not needed for user creation
+        password2 = validated_data.pop('password2')
+        position = validated_data.pop('position', 'WAITER')  # Default to WAITER if not provided
+        salary = validated_data.pop('salary', 0)
+        hire_date = validated_data.pop('hire_date', timezone.now().date())
         
-        # Create the user
-        user = User.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data['email'],
-            first_name=validated_data.get('first_name', ''),
-            last_name=validated_data.get('last_name', ''),
-            phone_number=validated_data.get('phone_number', ''),
-            address=validated_data.get('address', ''),
-            password=validated_data['password']
-        )
-        return user
+        # Check if user with this email already exists
+        if User.objects.filter(email=validated_data['email']).exists():
+            raise serializers.ValidationError({"email": "A user with this email already exists."})
+            
+        # Check if username is taken
+        if User.objects.filter(username=validated_data['username']).exists():
+            raise serializers.ValidationError({"username": "A user with this username already exists."})
+        
+        user = None
+        try:
+            # Create the user
+            user = User.objects.create_user(
+                username=validated_data['username'],
+                email=validated_data['email'],
+                first_name=validated_data.get('first_name', ''),
+                last_name=validated_data.get('last_name', ''),
+                phone_number=validated_data.get('phone_number', ''),
+                address=validated_data.get('address', ''),
+                password=validated_data['password'],
+                user_type='STAFF',  # Set user type to STAFF
+                is_staff=True       # Give staff permissions
+            )
+            
+            # Check if staff profile already exists for this user
+            if StaffProfile.objects.filter(user=user).exists():
+                return user  # Staff profile already exists, return the user
+            
+            # Create staff profile with all required fields
+            staff_profile = StaffProfile(
+                user=user,
+                position=position,
+                department='FRONT_OF_HOUSE',  # Default department
+                hire_date=hire_date,
+                is_active=True,
+                is_full_time=True,
+                shift_preference='AFTERNOON',  # Default shift
+                weekly_hours=40,  # Default hours
+                salary=salary,
+                hourly_rate=float(salary) / (4 * 40) if salary else 15.00,  # Calculate hourly rate from monthly salary
+                emergency_contact_name=f"Emergency Contact for {user.get_full_name() or 'User'}",
+                emergency_contact_phone=user.phone_number or '+1234567890',
+                emergency_contact_relation='Parent'
+            )
+            
+            # Generate employee ID by saving the profile
+            staff_profile.save()
+            
+            return user
+            
+        except Exception as e:
+            # If user was created but staff profile creation failed, delete the user
+            if user and user.pk:
+                user.delete()
+            # Log the full error for debugging
+            import traceback
+            traceback.print_exc()
+            error_msg = str(e)
+            if 'UNIQUE constraint' in error_msg and 'user_id' in error_msg:
+                error_msg = "This user already has a staff profile."
+            raise serializers.ValidationError({"error": f"Failed to create staff profile: {error_msg}"})
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -87,17 +144,17 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return data
 
 class StaffLoginSerializer(serializers.Serializer):
-    staff_id = serializers.CharField()
+    employee_id = serializers.CharField()
     
     def validate(self, data):
-        staff_id = data.get('staff_id')
+        employee_id = data.get('employee_id')
         try:
-            staff = StaffProfile.objects.get(staff_id=staff_id, is_active=True)
+            staff = StaffProfile.objects.get(employee_id=employee_id, is_active=True)
             if not staff.user.is_active:
-                raise serializers.ValidationError({"staff_id": "User account is disabled."})
+                raise serializers.ValidationError({"employee_id": "User account is disabled."})
             return {'user': staff.user}
         except StaffProfile.DoesNotExist:
-            raise serializers.ValidationError({"staff_id": "Invalid staff ID or account is inactive."})
+            raise serializers.ValidationError({"employee_id": "Invalid employee ID or account is inactive."})
 
 class ManagerLoginSerializer(serializers.Serializer):
     username = serializers.CharField()

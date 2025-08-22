@@ -27,7 +27,7 @@ const Sidebar = () => {
     <div className="w-20 bg-white shadow-lg flex flex-col items-center py-6 space-y-8">
       {/* Top Logo as Image */}
       <div className="mb-4">
-        <NavLink to="/manager-dashboard">
+        <NavLink to="/manager/dashboard">
           <img
             src="/logo.png"
             alt="Logo"

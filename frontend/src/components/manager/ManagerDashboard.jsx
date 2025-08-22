@@ -58,7 +58,7 @@ const ManagerDashboard = () => {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Total Income */}
-        <div className="bg-white p-6 rounded-xl shadow-sm">
+        <div className="bg-white p-6 rounded-xl shadow-sm ">
           <h2 className="text-xl font-medium mb-4">Total income</h2>
           <div className="flex flex-col items-center justify-center">
             {/* Donut chart with updated colors */}

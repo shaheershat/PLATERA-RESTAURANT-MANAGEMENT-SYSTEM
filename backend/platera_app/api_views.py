@@ -262,6 +262,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 # Notification System
 class NotificationViewSet(viewsets.ModelViewSet):
+    queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]

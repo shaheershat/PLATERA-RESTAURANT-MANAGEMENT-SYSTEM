@@ -6,6 +6,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, login
 from django.contrib.auth import get_user_model
 from rest_framework.permissions import AllowAny
+from .models import StaffProfile
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -77,64 +78,64 @@ class StaffLoginView(APIView):
         logger.info(f'Staff login request data: {request.data}')
         
         try:
-            # Check if staff_id is provided in the request data
-            if 'staff_id' not in request.data:
-                logger.warning('No staff_id provided in request')
+            # Check if employee_id is provided in the request data
+            if 'employee_id' not in request.data:
+                logger.warning('No employee_id provided in request')
                 return Response(
-                    {'error': 'Staff ID is required'},
+                    {'error': 'Employee ID is required'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Get and validate staff_id
-            staff_id = str(request.data.get('staff_id', '')).strip()
-            if not staff_id:
-                logger.warning('Empty staff_id provided')
+            # Get and validate employee_id
+            employee_id = str(request.data.get('employee_id', '')).strip()
+            if not employee_id:
+                logger.warning('Empty employee_id provided')
                 return Response(
-                    {'error': 'Staff ID cannot be empty'},
+                    {'error': 'Employee ID cannot be empty'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            logger.info(f'Attempting to find staff with ID: {staff_id}')
+            logger.info(f'Attempting to find staff with ID: {employee_id}')
             
             # Get staff user with related profile
             try:
                 # First, try to find any user with this staff ID, regardless of status
                 user = User.objects.select_related('staff_profile').get(
-                    staff_profile__staff_id__iexact=staff_id
+                    staff_profile__employee_id__iexact=employee_id
                 )
                 
-                logger.info(f'Found user with staff ID {staff_id}: {user.username} (ID: {user.id})')
+                logger.info(f'Found user with employee ID {employee_id}: {user.username} (ID: {user.id})')
                 
-                # Check if user is active
+                # Check if the user is active
                 if not user.is_active:
-                    logger.warning(f'User {user.id} is inactive')
+                    logger.warning(f'User {user.username} is inactive')
                     return Response(
-                        {'staff_id': 'Account is inactive. Please contact an administrator.'},
+                        {'error': 'This staff account is inactive'},
                         status=status.HTTP_401_UNAUTHORIZED
                     )
-                    
-                # Check if user has staff type
-                if user.user_type != 'STAFF':
-                    logger.warning(f'User {user.id} is not a staff member (type: {user.user_type})')
+                
+                # Verify the employee ID matches (case-insensitive)
+                if user.staff_profile.employee_id.lower() != employee_id.lower():
+                    logger.warning(f'Employee ID mismatch: {user.staff_profile.employee_id} != {employee_id}')
                     return Response(
-                        {'staff_id': 'This account does not have staff access.'},
-                        status=status.HTTP_403_FORBIDDEN
+                        {'error': 'Invalid employee credentials'},
+                        status=status.HTTP_401_UNAUTHORIZED
                     )
                     
                 # Check if user has a staff profile
                 if not hasattr(user, 'staff_profile'):
                     logger.error(f'User {user.id} is missing staff profile')
                     return Response(
-                        {'staff_id': 'Staff profile configuration error.'},
+                        {'employee_id': 'Staff profile configuration error.'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
                     )
                     
                 logger.info(f'Staff user validated: {user.username} (ID: {user.id})')
                     
             except User.DoesNotExist:
-                logger.warning(f'No user found with staff ID: {staff_id}')
+                logger.warning(f'No user found with employee ID: {employee_id}')
                 return Response(
-                    {'staff_id': 'Invalid staff ID. Please check and try again.'},
+                    {'employee_id': 'Invalid employee ID. Please check and try again.'},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             except Exception as e:

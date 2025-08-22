@@ -69,7 +69,7 @@ const StaffLogin = () => {
         // The request was made and the server responded with a status code
         // that falls out of the range of 2xx
         if (error.response.status === 400 || error.response.status === 401) {
-          errorMessage = error.response.data?.error || error.response.data?.staff_id || 'Invalid staff ID or password';
+          errorMessage = error.response.data?.error || error.response.data?.employee_id || 'Invalid employee ID' || 'Invalid staff ID or password';
         } else if (error.response.status >= 500) {
           errorMessage = 'Server error. Please try again later.';
         }

@@ -15,20 +15,24 @@ class TimestampModel(models.Model):
         abstract = True
 
 class CustomUserManager(BaseUserManager):
-    def create_user(self, email, password=None, **extra_fields):
-        if not email:
-            raise ValueError('The Email field must be set')
-        email = self.normalize_email(email)
-        user = self.model(email=email, **extra_fields)
+    def create_user(self, username, password=None, **extra_fields):
+        if not username:
+            raise ValueError('The Username field must be set')
+        
+        # Ensure username is unique
+        if self.model.objects.filter(username=username).exists():
+            raise ValueError('A user with that username already exists')
+            
+        user = self.model(username=username, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, password=None, **extra_fields):
+    def create_superuser(self, username, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('user_type', 'ADMIN')
-        return self.create_user(email, password, **extra_fields)
+        return self.create_user(username, password, **extra_fields)
 
 class User(AbstractUser):
     USER_TYPE_CHOICES = (
@@ -39,15 +43,15 @@ class User(AbstractUser):
     )
     
     user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, default='CUSTOMER')
-    email = models.EmailField(unique=True)
+    email = models.EmailField(unique=False, blank=True, null=True)  # Made email optional and non-unique
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     date_joined = models.DateTimeField(default=timezone.now)
     is_active = models.BooleanField(default=True)
     
-    # Use email as the username field
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username']
+    # Use username as the authentication field
+    USERNAME_FIELD = 'username'
+    REQUIRED_FIELDS = []  # Remove email from required fields
     
     objects = CustomUserManager()
     
@@ -144,27 +148,38 @@ class StaffProfile(TimestampModel):
         verbose_name_plural = 'Staff Profiles'
     
     def save(self, *args, **kwargs):
-        if not self.employee_id:
-            # Generate employee ID: DEPT-YYMM-XXX
-            dept_prefix = self.department[:3].upper()
-            year_month = timezone.now().strftime('%y%m')
-            last_emp = StaffProfile.objects.filter(
-                employee_id__startswith=f"{dept_prefix}-{year_month}"
-            ).order_by('-employee_id').first()
-            
-            if last_emp and last_emp.employee_id:
-                last_num = int(last_emp.employee_id.split('-')[-1])
-                new_num = f"{last_num + 1:03d}"
-            else:
-                new_num = "001"
+        # Prevent recursion by checking if this is a user-triggered save
+        if not hasattr(self, '_dirty'):
+            self._dirty = True
+            try:
+                if not self.employee_id:
+                    # Generate employee ID: DEPT-YYMM-XXX
+                    dept_prefix = self.department[:3].upper() if self.department else 'STF'
+                    year_month = timezone.now().strftime('%y%m')
+                    last_emp = StaffProfile.objects.filter(
+                        employee_id__startswith=f"{dept_prefix}-{year_month}"
+                    ).order_by('-employee_id').first()
+                    
+                    if last_emp and last_emp.employee_id:
+                        try:
+                            last_num = int(last_emp.employee_id.split('-')[-1])
+                            new_num = f"{last_num + 1:03d}"
+                        except (IndexError, ValueError):
+                            new_num = "001"
+                    else:
+                        new_num = "001"
+                        
+                    self.employee_id = f"{dept_prefix}-{year_month}-{new_num}"
                 
-            self.employee_id = f"{dept_prefix}-{year_month}-{new_num}"
-        
-        # Set user as staff
-        self.user.is_staff = True
-        self.user.save()
-        
-        super().save(*args, **kwargs)
+                # Set user as staff if this is a staff profile
+                if self.user and not self.user.is_staff:
+                    self.user.is_staff = True
+                    self.user.save(update_fields=['is_staff'])
+                
+                # Save the profile
+                super().save(*args, **kwargs)
+            finally:
+                self._dirty = False
     
     def __str__(self):
         return f"{self.user.get_full_name()} - {self.get_position_display()} ({self.get_department_display()})"
@@ -1039,14 +1054,48 @@ class Notification(models.Model):
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
-    if created and instance.user_type == 'STAFF' and not hasattr(instance, 'staff_profile'):
-        StaffProfile.objects.create(user=instance)
-    if created and not hasattr(instance, 'profile'):
-        Profile.objects.create(user=instance)
+    if created:
+        # Create a basic profile for all users
+        if not hasattr(instance, 'profile'):
+            Profile.objects.create(user=instance)
+            
+        # Create staff profile for staff users
+        if instance.user_type == 'STAFF' and not hasattr(instance, 'staff_profile'):
+            # Create staff profile with required fields only
+            staff_profile = StaffProfile(
+                user=instance,
+                employee_id=f"TEMP-{str(instance.id).zfill(3)}",
+                position='WAITER',
+                department='FRONT_OF_HOUSE',
+                hire_date=timezone.now().date(),
+                is_active=True,
+                is_full_time=True,
+                shift_preference='AFTERNOON',
+                weekly_hours=40,
+                emergency_contact_name=f"Emergency Contact for {instance.get_full_name() or 'User'}",
+                emergency_contact_phone='+1234567890',
+                emergency_contact_relation='Parent',
+                # Set default values for required fields
+                hourly_rate=15.00,
+                salary=2000.00
+            )
+            
+            # Save the staff profile (this will trigger the save method to generate a proper employee_id)
+            staff_profile.save()
 
 @receiver(post_save, sender=User)
 def save_user_profile(sender, instance, **kwargs):
-    if hasattr(instance, 'profile'):
-        instance.profile.save()
-    if hasattr(instance, 'staff_profile'):
-        instance.staff_profile.save()
+    # Only save if this is not a recursive call
+    if not hasattr(instance, '_dirty'):
+        instance._dirty = True
+        try:
+            # Save profile if it exists
+            if hasattr(instance, 'profile'):
+                instance.profile.save()
+                
+            # Save staff profile if it exists
+            if hasattr(instance, 'staff_profile'):
+                instance.staff_profile.save(update_fields=[])
+        finally:
+            # Clean up the dirty flag
+            instance._dirty = False

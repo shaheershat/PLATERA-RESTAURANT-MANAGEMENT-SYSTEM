@@ -23,14 +23,14 @@ class StaffProfileInline(admin.StackedInline):
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     inlines = (ProfileInline, StaffProfileInline)
-    list_display = ('email', 'first_name', 'last_name', 'user_type', 'is_staff', 'is_active')
+    list_display = ('username', 'email', 'first_name', 'last_name', 'user_type', 'is_staff', 'is_active')
     list_filter = ('user_type', 'is_staff', 'is_active')
-    search_fields = ('email', 'first_name', 'last_name')
-    ordering = ('email',)
+    search_fields = ('username', 'email', 'first_name', 'last_name')
+    ordering = ('username',)
     filter_horizontal = ('groups', 'user_permissions',)
     fieldsets = (
-        (None, {'fields': ('email', 'password')}),
-        ('Personal Info', {'fields': ('first_name', 'last_name', 'phone_number', 'address')}),
+        (None, {'fields': ('username', 'password')}),
+        ('Personal Info', {'fields': ('first_name', 'last_name', 'email', 'phone_number', 'address')}),
         ('Permissions', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
         }),
@@ -40,7 +40,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'password1', 'password2', 'user_type', 'is_staff', 'is_active')}
+            'fields': ('username', 'password1', 'password2', 'email', 'user_type', 'is_staff', 'is_active')}
         ),
     )
 
