@@ -26,8 +26,9 @@ export const AuthProvider = ({ children }) => {
           
           // Then try to refresh user data from the server
           try {
-            const userData = await authApi.getCurrentUser();
-            if (userData) {
+            const response = await authApi.getCurrentUser();
+            if (response && response.data) {
+              const userData = response.data;
               setUser(userData);
               localStorage.setItem('user', JSON.stringify(userData));
             }

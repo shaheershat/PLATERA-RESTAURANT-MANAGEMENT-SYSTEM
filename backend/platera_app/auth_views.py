@@ -1,12 +1,13 @@
 import logging
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, generics
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, login
 from django.contrib.auth import get_user_model
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from .models import StaffProfile
+from .serializers import UserSerializer
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -69,6 +70,24 @@ class ManagerLoginView(APIView):
             {'error': 'Invalid credentials or unauthorized access'}, 
             status=status.HTTP_401_UNAUTHORIZED
         )
+
+    def get(self, request, *args, **kwargs):
+        return Response(
+            {'error': 'Only POST method is allowed'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+
+class CurrentUserView(generics.RetrieveAPIView):
+    """
+    View to get the currently authenticated user's information.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserSerializer
+
+    def get_object(self):
+        return self.request.user
+
 
 class StaffLoginView(APIView):
     permission_classes = [AllowAny]

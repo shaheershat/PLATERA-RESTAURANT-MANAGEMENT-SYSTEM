@@ -36,11 +36,33 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 class StaffProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
+    role = serializers.CharField(source='user.user_type', read_only=True)
+    position = serializers.ChoiceField(choices=StaffProfile.POSITION_CHOICES, required=False)
+    salary = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, min_value=0)
     
     class Meta:
         model = StaffProfile
         fields = '__all__'
-        read_only_fields = ('created_at', 'updated_at')
+        read_only_fields = ('created_at', 'updated_at', 'role', 'employee_id')
+        
+    def update(self, instance, validated_data):
+        # Handle position update
+        if 'position' in validated_data:
+            instance.position = validated_data['position']
+            
+        # Handle salary update
+        if 'salary' in validated_data and validated_data['salary'] is not None:
+            instance.salary = validated_data['salary']
+            # Update hourly rate based on monthly salary (assuming 40 hours/week, 4 weeks/month)
+            instance.hourly_rate = float(validated_data['salary']) / (4 * 40)
+            
+        # Save the instance with all other validated data
+        for attr, value in validated_data.items():
+            if attr not in ('position', 'salary'):  # Already handled these
+                setattr(instance, attr, value)
+                
+        instance.save()
+        return instance
 
 # Authentication
 class UserRegistrationSerializer(serializers.ModelSerializer):

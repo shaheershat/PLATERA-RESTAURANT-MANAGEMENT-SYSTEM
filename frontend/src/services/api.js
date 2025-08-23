@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api';
+const API_URL = 'http://localhost:8000';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -67,7 +67,7 @@ api.interceptors.response.use(
 export const authApi = {
   // Admin login
   adminLogin: (credentials) =>
-    api.post('/auth/admin/login/', credentials).then((res) => {
+    api.post('/api/auth/admin/login/', credentials).then((res) => {
       if (res.data.access) {
         localStorage.setItem('access_token', res.data.access);
         localStorage.setItem('refresh_token', res.data.refresh);
@@ -78,7 +78,7 @@ export const authApi = {
 
   // Manager login (also used for admin login)
   managerLogin: (credentials) =>
-    api.post('/auth/manager/login/', credentials)
+    api.post('/api/auth/manager/login/', credentials)
       .then((res) => {
         if (res.data && res.data.access) {
           localStorage.setItem('access_token', res.data.access);
@@ -113,7 +113,7 @@ export const authApi = {
       }
       
       const response = await api.post(
-        '/auth/staff/login/',
+        '/api/auth/staff/login/',
         { employee_id: cleanStaffId },
         {
           headers: {
@@ -167,14 +167,11 @@ export const authApi = {
     return Promise.resolve();
   },
   
-  // Get current user
-  getCurrentUser: () => api.get('/auth/me/'),
-  
   // Refresh token
-  refreshToken: (refresh) => api.post('/auth/token/refresh/', { refresh }),
+  refreshToken: (refresh) => api.post('/api/auth/token/refresh/', { refresh }),
   
   // Verify token
-  verifyToken: (token) => api.post('/auth/token/verify/', { token })
+  verifyToken: (token) => api.post('/api/auth/token/verify/', { token })
 };
 
 // Cloudinary API
@@ -320,9 +317,13 @@ export const staffApi = {
   getStaffMembers: async (params = {}) => {
     try {
       console.log('Fetching staff members with params:', params);
-      const response = await api.get('/users/', { 
-        ...params,
-        user_type: 'STAFF' // Filter only staff users
+      // Use the users endpoint with user_type=STAFF filter
+      const response = await api.get('/api/users/', { 
+        params: { 
+          ...params, 
+          user_type: 'STAFF',
+          page_size: 100 // Increase page size to get all staff members
+        } 
       });
       console.log('Staff members response:', response);
       return response;
@@ -339,25 +340,55 @@ export const staffApi = {
   createStaffMember: async (staffData) => {
     try {
       const formData = new FormData();
+      const staffProfileData = {};
+      const userData = {};
       
-      // Add user_type as STAFF
-      const staffDataWithType = {
-        ...staffData,
-        user_type: 'STAFF' // Ensure new users are created as STAFF type
-      };
+      // Staff profile fields that should be nested
+      const staffProfileFields = [
+        'position', 'salary', 'department', 'hire_date', 'termination_date',
+        'is_active', 'is_full_time', 'shift_preference', 'weekly_hours',
+        'hourly_rate', 'emergency_contact_name', 'emergency_contact_phone',
+        'emergency_contact_relation', 'id_proof', 'resume', 'photo', 'notes'
+      ];
       
-      // Append all fields to form data
-      Object.keys(staffDataWithType).forEach(key => {
-        if (key === 'profile_picture' && staffDataWithType[key]) {
-          formData.append('profile_picture', staffDataWithType[key]);
-        } else if (staffDataWithType[key] !== null && staffDataWithType[key] !== undefined) {
-          formData.append(key, staffDataWithType[key]);
+      // Process all fields
+      Object.keys(staffData).forEach(key => {
+        // Handle file uploads
+        if (key === 'profile_picture' && staffData[key]) {
+          formData.append('profile_picture', staffData[key]);
+        } 
+        // Handle staff profile fields
+        else if (staffProfileFields.includes(key) && staffData[key] !== null && staffData[key] !== undefined) {
+          staffProfileData[key] = staffData[key];
         }
+        // Handle regular user fields
+        else if (staffData[key] !== null && staffData[key] !== undefined) {
+          // Skip if it's a nested object that we're handling separately
+          if (typeof staffData[key] === 'object' && staffData[key] !== null) {
+            return;
+          }
+          userData[key] = staffData[key];
+        }
+      });
+      
+      // Add staff profile data as individual fields with staff_profile prefix
+      Object.keys(staffProfileData).forEach(key => {
+        formData.append(`staff_profile.${key}`, staffProfileData[key]);
+      });
+      
+      // Add user data
+      Object.keys(userData).forEach(key => {
+        formData.append(key, userData[key]);
       });
       
       // Add user type and staff status
       formData.append('user_type', 'STAFF');
       formData.append('is_staff', 'true');
+      
+      console.log('Creating staff with data:', {
+        ...Object.fromEntries(formData),
+        staff_profile: staffProfileData
+      });
       
       console.log('Creating staff with data:', Object.fromEntries(formData));
       const response = await api.post('/auth/register/', formData, {
@@ -383,33 +414,83 @@ export const staffApi = {
   },
   
   // Update an existing staff member
-  updateStaffMember: (id, staffData) => {
-    const formData = new FormData();
-    
-    // Append all fields to form data
-    Object.keys(staffData).forEach(key => {
-      if (key === 'profile_picture' && staffData[key]) {
-        if (staffData[key] instanceof File) {
-          formData.append('profile_picture', staffData[key]);
+  updateStaffMember: async (id, staffData) => {
+    try {
+      const formData = new FormData();
+      const staffProfileData = {};
+      const userData = {};
+      
+      // Separate staff profile fields from user fields
+      const staffProfileFields = [
+        'position', 'salary', 'department', 'hire_date', 'termination_date',
+        'is_active', 'is_full_time', 'shift_preference', 'weekly_hours',
+        'hourly_rate', 'emergency_contact_name', 'emergency_contact_phone',
+        'emergency_contact_relation', 'id_proof', 'resume', 'photo', 'notes'
+      ];
+      
+      // Process all fields
+      Object.keys(staffData).forEach(key => {
+        // Handle file uploads
+        if (key === 'profile_picture' && staffData[key]) {
+          if (staffData[key] instanceof File) {
+            formData.append('profile_picture', staffData[key]);
+          } else if (typeof staffData[key] === 'string' && staffData[key].startsWith('http')) {
+            // Skip if it's already a URL (existing image)
+            return;
+          }
+        } 
+        // Handle staff profile fields
+        else if (staffProfileFields.includes(key) && staffData[key] !== null && staffData[key] !== undefined) {
+          staffProfileData[key] = staffData[key];
         }
-      } else if (staffData[key] !== null && staffData[key] !== undefined) {
-        formData.append(key, staffData[key]);
+        // Handle regular user fields
+        else if (staffData[key] !== null && staffData[key] !== undefined) {
+          // Skip if it's a nested object that we're handling separately
+          if (typeof staffData[key] === 'object' && staffData[key] !== null) {
+            return;
+          }
+          formData.append(key, staffData[key]);
+        }
+      });
+      
+      // Add staff profile data as individual fields with staff_profile prefix
+      Object.keys(staffProfileData).forEach(key => {
+        formData.append(`staff_profile.${key}`, staffProfileData[key]);
+      });
+      
+      console.log('Updating staff with data:', {
+        ...Object.fromEntries(formData),
+        staff_profile: staffProfileData
+      });
+      
+      const response = await api.patch(`/api/users/${id}/`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      console.log('Staff updated successfully:', response.data);
+      return response;
+    } catch (error) {
+      console.error('Error in updateStaffMember:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+        console.error('Response headers:', error.response.headers);
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+      } else {
+        console.error('Error setting up request:', error.message);
       }
-    });
-    
-    return api.patch(`/users/${id}/`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+      throw error;
+    }
   },
   
   // Delete a staff member
-  deleteStaffMember: (id) => api.delete(`/users/${id}/`),
+  deleteStaffMember: (id) => api.delete(`/api/users/${id}/`),
   
   // Update staff status (active/inactive)
   updateStaffStatus: (id, isActive) => 
-    api.patch(`/users/${id}/`, { is_active: isActive }),
+    api.patch(`/api/users/${id}/`, { is_active: isActive }),
   
   // Get staff shifts
   getShifts: (params = {}) => {
@@ -2832,7 +2913,7 @@ export const userApi = {
   // ===== USER PROFILE =====
   
   // Get current user profile
-  getCurrentUser: () => api.get('/api/users/me/'),
+  getCurrentUser: () => api.get('/api/auth/me/'),
   
   // Update current user profile
   updateCurrentUser: (userData) =>

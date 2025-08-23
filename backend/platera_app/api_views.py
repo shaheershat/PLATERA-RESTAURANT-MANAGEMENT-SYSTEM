@@ -41,6 +41,88 @@ class UserViewSet(viewsets.ModelViewSet):
         if not self.request.user.is_superuser:
             return User.objects.filter(is_superuser=False)
         return super().get_queryset()
+        
+    def get_serializer_class(self):
+        if self.action == 'list' and self.request.query_params.get('user_type') == 'STAFF':
+            return StaffProfileSerializer
+        return super().get_serializer_class()
+        
+    def list(self, request, *args, **kwargs):
+        # If filtering for staff, return staff profiles instead of users
+        if request.query_params.get('user_type') == 'STAFF':
+            # Get all staff users with their profiles
+            staff_users = User.objects.filter(user_type='STAFF').select_related('staff_profile')
+            
+            # Apply filtering and pagination
+            queryset = self.filter_queryset(staff_users)
+            page = self.paginate_queryset(queryset)
+            
+            if page is not None:
+                # Serialize each user with their staff profile
+                serialized_data = []
+                for user in page:
+                    user_data = UserSerializer(user).data
+                    if hasattr(user, 'staff_profile'):
+                        user_data['staff_profile'] = StaffProfileSerializer(user.staff_profile).data
+                        user_data['role'] = user.user_type  # Add role field for frontend filtering
+                    serialized_data.append(user_data)
+                
+                return self.get_paginated_response(serialized_data)
+            
+            # Handle non-paginated response
+            serialized_data = []
+            for user in queryset:
+                user_data = UserSerializer(user).data
+                if hasattr(user, 'staff_profile'):
+                    user_data['staff_profile'] = StaffProfileSerializer(user.staff_profile).data
+                    user_data['role'] = user.user_type  # Add role field for frontend filtering
+                serialized_data.append(user_data)
+                
+            return Response(serialized_data)
+            
+        return super().list(request, *args, **kwargs)
+    
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        # Create a mutable copy of the request data
+        data = request.data.copy()
+        
+        # Handle staff profile updates
+        if instance.user_type == 'STAFF' and 'staff_profile' in data:
+            # Get staff profile data before removing it from the main data
+            staff_profile_data = data.pop('staff_profile')
+            
+            # Update user fields
+            user_serializer = self.get_serializer(instance, data=data, partial=partial)
+            user_serializer.is_valid(raise_exception=True)
+            self.perform_update(user_serializer)
+            
+            # Update staff profile
+            if hasattr(instance, 'staff_profile'):
+                staff_profile = instance.staff_profile
+                staff_serializer = StaffProfileSerializer(
+                    staff_profile, 
+                    data=staff_profile_data, 
+                    partial=partial
+                )
+                if staff_serializer.is_valid():
+                    staff_serializer.save()
+                    # Get the updated user data with staff profile
+                    response_data = user_serializer.data
+                    response_data['staff_profile'] = staff_serializer.data
+                    return Response(response_data)
+                else:
+                    return Response(
+                        staff_serializer.errors, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            return Response(user_serializer.data)
+            
+        # For non-staff users or if no staff_profile in data, use default update
+        return super().update(request, *args, **kwargs)
 
 class ProfileViewSet(viewsets.ModelViewSet):
     queryset = Profile.objects.all()
